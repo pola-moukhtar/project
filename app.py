@@ -35,8 +35,11 @@ st.set_page_config(page_title="Plant Disease Classifier", layout="wide", page_ic
 @st.cache_resource
 def load_all_models():
     # 1. Configuration
+    # Replace your old ann_url line with this block
+    
     ann_id = "1supC2FhVCobl5weItc5g1ggNYEy-3ods"
-    ann_url = f"https://drive.google.com/uc?export=download&id={ann_id}"
+    # This URL bypasses the "virus scan" warning for large files
+    ann_url = f"https://drive.google.com/uc?export=download&id={ann_id}&confirm=t"
     
     model_files = {
         "cnn": "simple_cnn_best.keras",
