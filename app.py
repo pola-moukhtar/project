@@ -73,6 +73,9 @@ else:
     # This stays visible only if something actually breaks
     message_placeholder.warning("⚠️ Some models failed to load. Please check your connection or Dropbox link.")
 # The order must be exactly the same as your training folder structure
+
+
+
 CLASS_NAMES = [
     'Apple___Apple_scab', 'Apple___Black_rot', 'Apple___Cedar_apple_rust', 'Apple___healthy',
     'Blueberry___healthy', 'Cherry_(including_sour)___Powdery_mildew', 'Cherry_(including_sour)___healthy',
@@ -92,8 +95,6 @@ CLASS_NAMES = [
 # CONFIG & STYLING
 # ===============================
 st.set_page_config(page_title="Plant Disease Classifier", layout="wide", page_icon="🌿")
-
-
 
 # ===============================
 # HELPER FUNCTIONS
