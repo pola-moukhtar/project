@@ -1,13 +1,77 @@
 import os
-import urllib.request
-import streamlit as st
 import numpy as np
-import time
-from PIL import Image
 import requests
+from PIL import Image
+import urllib.request
 from io import BytesIO
+import time
+import urllib.request
 import tensorflow as tf
+import streamlit as st
 
+# ===============================
+# LOAD MODELS (CACHED)
+# ===============================
+@st.cache_resource
+def load_all_models():
+    # 1. Dropbox Configuration
+    # I've updated your link to dl=1 to ensure a direct download
+    ann_url = "https://www.dropbox.com/scl/fi/wktx7nv4lwq2xzfrzbajj/ann_best_model.keras?rlkey=e4kmnpvdwrdx472ba6poprhrt&st=3dploowk&dl=1"
+    
+    model_files = {
+        "cnn": "simple_cnn_best.keras",
+        "mobilenet": "mobilenet_best_model.h5",
+        "ann": "ann_best_model.keras"
+    }
+
+    # 2. Cleanup Corrupted ANN File (if it's that old 3KB Google Drive error)
+    if os.path.exists(model_files["ann"]) and os.path.getsize(model_files["ann"]) < 1000000:
+        os.remove(model_files["ann"])
+
+    # 3. Handle ANN Download from Dropbox
+    if not os.path.exists(model_files["ann"]):
+        with st.status("📥 Downloading ANN model from Dropbox (150MB)...", expanded=True) as status:
+            try:
+                urllib.request.urlretrieve(ann_url, model_files["ann"])
+                status.update(label="✅ ANN Model Downloaded!", state="complete", expanded=False)
+            except Exception as e:
+                st.error(f"Dropbox download failed: {e}")
+                return None, None, None
+
+    # 4. Final Loading
+    try:
+        with st.spinner("Loading models into memory..."):
+            m1 = tf.keras.models.load_model(model_files["cnn"])
+            m2 = tf.keras.models.load_model(model_files["mobilenet"])
+            m3 = tf.keras.models.load_model(model_files["ann"])
+        return m1, m2, m3
+    except Exception as e:
+        st.error(f"Error loading models: {e}")
+        return None, None, None
+
+# ===============================
+# EXECUTION & UI REFRESH
+# ===============================
+# Create an empty spot for the warning/success message
+message_placeholder = st.empty()
+
+# Run the loader
+model1, model2, model3 = load_all_models()
+
+# Define the Model Specs Mapping
+if all([model1, model2, model3]):
+    MODEL_SPECS = {
+        "Model 1 (CNN)": {"model": model1, "size": (224, 224)},
+        "Model 2 (MobileNet)": {"model": model2, "size": (224, 224)},
+        "Model 3 (ANN)": {"model": model3, "size": (64, 64)},
+    }
+    # Show success briefly, then clear it so the UI stays clean
+    message_placeholder.success("🚀 All models loaded successfully!")
+    time.sleep(2)
+    message_placeholder.empty()
+else:
+    # This stays visible only if something actually breaks
+    message_placeholder.warning("⚠️ Some models failed to load. Please check your connection or Dropbox link.")
 # The order must be exactly the same as your training folder structure
 CLASS_NAMES = [
     'Apple___Apple_scab', 'Apple___Black_rot', 'Apple___Cedar_apple_rust', 'Apple___healthy',
@@ -29,66 +93,6 @@ CLASS_NAMES = [
 # ===============================
 st.set_page_config(page_title="Plant Disease Classifier", layout="wide", page_icon="🌿")
 
-# ===============================
-# LOAD MODELS (CACHED)
-# ===============================
-@st.cache_resource
-def load_all_models():
-    # 1. Configuration
-    ann_id = "1supC2FhVCobl5weItc5g1ggNYEy-3ods"
-    ann_url = f"https://drive.google.com/uc?export=download&id={ann_id}"
-    
-    model_files = {
-        "cnn": "simple_cnn_best.keras",
-        "mobilenet": "mobilenet_best_model.h5",
-        "ann": "ann_best_model.keras"
-    }
-
-    # 2. Check and Download ANN (the 150MB model)
-    if not os.path.exists(model_files["ann"]):
-        # Using a status container to avoid warnings
-        with st.status("📥 Initializing Deep Learning Models...", expanded=True) as status:
-            st.write("Downloading ANN Weights (150MB)...")
-            try:
-                urllib.request.urlretrieve(ann_url, model_files["ann"])
-                
-                # Check for "Virus Scan" or "Permission" pages from Google Drive
-                if os.path.getsize(model_files["ann"]) < 100000: 
-                    st.error("Download failed: The file is too small. Check Drive permissions!")
-                    if os.path.exists(model_files["ann"]): os.remove(model_files["ann"])
-                    return None, None, None
-                
-                st.write("Finalizing file structure...")
-                time.sleep(2) # Shortened to 2 seconds to reduce the warning impact
-                status.update(label="✅ ANN Ready!", state="complete", expanded=False)
-            except Exception as e:
-                st.error(f"Download error: {e}")
-                return None, None, None
-
-    # 2. Loading Phase
-    try:
-        # We load them individually so we can see which one fails in the logs
-        m1 = tf.keras.models.load_model(model_files["cnn"])
-        m2 = tf.keras.models.load_model(model_files["mobilenet"])
-        m3 = tf.keras.models.load_model(model_files["ann"])
-        return m1, m2, m3
-    except Exception as e:
-        st.error(f"Model Loading Error: {e}")
-        st.info("Tip: If you see 'File not found', try clicking 'Rerun' in the top right menu.")
-        return None, None, None
-    
-# Execute loading
-model1, model2, model3 = load_all_models()
-
-# Final Specs Mapping
-if all([model1, model2, model3]):
-    MODEL_SPECS = {
-        "Model 1 (CNN)": {"model": model1, "size": (224, 224)},
-        "Model 2 (MobileNet)": {"model": model2, "size": (224, 224)},
-        "Model 3 (ANN)": {"model": model3, "size": (64, 64)},
-    }
-else:
-    st.warning("⚠️ Some models failed to load. Please check your file paths or Drive IDs.")
 
 
 # ===============================
