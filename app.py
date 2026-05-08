@@ -2,6 +2,7 @@ import os
 import urllib.request
 import streamlit as st
 import numpy as np
+import time
 from PIL import Image
 import requests
 from io import BytesIO
@@ -45,26 +46,37 @@ def load_all_models():
 
     # 2. Check and Download ANN (the 150MB model)
     if not os.path.exists(model_files["ann"]):
-        status_message = st.empty()
-        status_message.info("📥 Initializing heavy model (ANN)... This may take a minute on the first run.")
-        try:
-            with st.spinner("Downloading ANN model from Google Drive..."):
+        # Using a status container to avoid warnings
+        with st.status("📥 Initializing Deep Learning Models...", expanded=True) as status:
+            st.write("Downloading ANN Weights (150MB)...")
+            try:
                 urllib.request.urlretrieve(ann_url, model_files["ann"])
-            status_message.success("✅ ANN Downloaded successfully!")
-        except Exception as e:
-            st.error(f"Failed to download ANN from Drive: {e}")
-            return None, None, None
+                
+                # Check for "Virus Scan" or "Permission" pages from Google Drive
+                if os.path.getsize(model_files["ann"]) < 100000: 
+                    st.error("Download failed: The file is too small. Check Drive permissions!")
+                    if os.path.exists(model_files["ann"]): os.remove(model_files["ann"])
+                    return None, None, None
+                
+                st.write("Finalizing file structure...")
+                time.sleep(2) # Shortened to 2 seconds to reduce the warning impact
+                status.update(label="✅ ANN Ready!", state="complete", expanded=False)
+            except Exception as e:
+                st.error(f"Download error: {e}")
+                return None, None, None
 
-    # 3. Load all models into memory
+    # 2. Loading Phase
     try:
+        # We load them individually so we can see which one fails in the logs
         m1 = tf.keras.models.load_model(model_files["cnn"])
         m2 = tf.keras.models.load_model(model_files["mobilenet"])
         m3 = tf.keras.models.load_model(model_files["ann"])
         return m1, m2, m3
     except Exception as e:
-        st.error(f"Error loading models: {e}")
+        st.error(f"Model Loading Error: {e}")
+        st.info("Tip: If you see 'File not found', try clicking 'Rerun' in the top right menu.")
         return None, None, None
-
+    
 # Execute loading
 model1, model2, model3 = load_all_models()
 
