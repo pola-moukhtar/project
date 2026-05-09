@@ -10,70 +10,73 @@ import tensorflow as tf
 import streamlit as st
 
 # ===============================
-# LOAD MODELS (CACHED)
+# 1. DOWNLOAD LOGIC (Outside Cache)
+# ===============================
+def ensure_ann_is_downloaded():
+    ann_url = "https://www.dropbox.com/scl/fi/wktx7nv4lwq2xzfrzbajj/ann_best_model.keras?rlkey=e4kmnpvdwrdx472ba6poprhrt&st=3dploowk&dl=1"
+    ann_path = "ann_best_model.keras"
+    
+    # Clean up if it's the old 3KB error file
+    if os.path.exists(ann_path) and os.path.getsize(ann_path) < 1000000:
+        os.remove(ann_path)
+        
+    if not os.path.exists(ann_path):
+        with st.status("📥 Downloading ANN model (150MB)...", expanded=True) as status:
+            try:
+                urllib.request.urlretrieve(ann_url, ann_path)
+                status.update(label="✅ Download Complete!", state="complete", expanded=False)
+                time.sleep(1) 
+                st.rerun() # This clears the status box from the UI
+            except Exception as e:
+                st.error(f"Download failed: {e}")
+                return False
+    return True
+
+# ===============================
+# 2. LOAD MODELS (Cached in Memory)
 # ===============================
 @st.cache_resource
 def load_all_models():
-    # 1. Dropbox Configuration
-    # I've updated your link to dl=1 to ensure a direct download
-    ann_url = "https://www.dropbox.com/scl/fi/wktx7nv4lwq2xzfrzbajj/ann_best_model.keras?rlkey=e4kmnpvdwrdx472ba6poprhrt&st=3dploowk&dl=1"
-    
+    # File paths for models already on GitHub/Disk
     model_files = {
         "cnn": "simple_cnn_best.keras",
         "mobilenet": "mobilenet_best_model.h5",
         "ann": "ann_best_model.keras"
     }
 
-    # 2. Cleanup Corrupted ANN File (if it's that old 3KB Google Drive error)
-    if os.path.exists(model_files["ann"]) and os.path.getsize(model_files["ann"]) < 1000000:
-        os.remove(model_files["ann"])
-
-    # 3. Handle ANN Download from Dropbox
-    if not os.path.exists(model_files["ann"]):
-        with st.status("📥 Downloading ANN model from Dropbox (150MB)...", expanded=True) as status:
-            try:
-                urllib.request.urlretrieve(ann_url, model_files["ann"])
-                status.update(label="✅ ANN Model Downloaded!", state="complete", expanded=False)
-            except Exception as e:
-                st.error(f"Dropbox download failed: {e}")
-                return None, None, None
-
-    # 4. Final Loading
     try:
-        with st.spinner("Loading models into memory..."):
-            m1 = tf.keras.models.load_model(model_files["cnn"])
-            m2 = tf.keras.models.load_model(model_files["mobilenet"])
-            m3 = tf.keras.models.load_model(model_files["ann"])
+        m1 = tf.keras.models.load_model(model_files["cnn"])
+        m2 = tf.keras.models.load_model(model_files["mobilenet"])
+        m3 = tf.keras.models.load_model(model_files["ann"])
         return m1, m2, m3
     except Exception as e:
-        st.error(f"Error loading models: {e}")
         return None, None, None
 
 # ===============================
-# EXECUTION & UI REFRESH
+# 3. EXECUTION FLOW
 # ===============================
-# Create an empty spot for the warning/success message
-message_placeholder = st.empty()
 
-# Run the loader
-model1, model2, model3 = load_all_models()
+# First: Ensure files exist
+if ensure_ann_is_downloaded():
+    # Second: Load into memory
+    model1, model2, model3 = load_all_models()
 
-# Define the Model Specs Mapping
-if all([model1, model2, model3]):
-    MODEL_SPECS = {
-        "Model 1 (CNN)": {"model": model1, "size": (224, 224)},
-        "Model 2 (MobileNet)": {"model": model2, "size": (224, 224)},
-        "Model 3 (ANN)": {"model": model3, "size": (64, 64)},
-    }
-    # Show success briefly, then clear it so the UI stays clean
-    message_placeholder.success("🚀 All models loaded successfully!")
-    time.sleep(2)
-    message_placeholder.empty()
+    if all([model1, model2, model3]):
+        # Define the Model Specs Mapping
+        MODEL_SPECS = {
+            "Model 1 (CNN)": {"model": model1, "size": (224, 224)},
+            "Model 2 (MobileNet)": {"model": model2, "size": (224, 224)},
+            "Model 3 (ANN)": {"model": model3, "size": (64, 64)},
+        }
+        # Final visual confirmation that disappears
+        msg = st.empty()
+        msg.success("🚀 All models active.")
+        time.sleep(1)
+        msg.empty() 
+    else:
+        st.error("❌ Models exist on disk but failed to load into TensorFlow.")
 else:
-    # This stays visible only if something actually breaks
-    message_placeholder.warning("⚠️ Some models failed to load. Please check your connection or Dropbox link.")
-# The order must be exactly the same as your training folder structure
-
+    st.warning("⚠️ Waiting for ANN model download...")
 
 
 CLASS_NAMES = [
@@ -410,21 +413,34 @@ elif page == "About Models":
     with col1:
         st.subheader("Model Architecture")
         st.code("""
-        - Conv2D (64 filters, 3x3) + ReLU
-        - MaxPooling2D (2x2)
-        - Conv2D (128 filters, 3x3) + ReLU
-        - GlobalAveragePooling2D
-        - Dense (128 units) + Dropout (0.5)
-        - Output: Dense (38 units, Softmax)
+    cnn_model = Sequential([      
+    Conv2D(64, (3, 3), activation='relu', input_shape=(224, 224, 3)),
+    MaxPooling2D(pool_size=(2, 2)),
+    Conv2D(128, (3, 3), activation='relu'),
+    MaxPooling2D(pool_size=(2, 2)),
+    Conv2D(256, (3, 3), activation='relu'),
+    MaxPooling2D(pool_size=(2, 2)),
+    Conv2D(512, (3, 3), activation='relu'),
+    MaxPooling2D(pool_size=(2, 2)),
+    GlobalAveragePooling2D(),
+    Dense(512, activation='relu'),
+    Dropout(0.5), 
+    Dense(38, activation='softmax')
+])
         """)
     with col2:
         st.subheader("Final Test Metrics")
-        st.metric("Test Accuracy", "94.20%")
+        st.metric("Test Accuracy", "92.84%")
         m_col1, m_col2 = st.columns(2)
-        m_col1.write("**Precision:** 0.94")
+        m_col1.write("**Precision:** 0.93")
         m_col1.write("**Recall:** 0.93")
-        m_col2.write("**F1-Score:** 0.94")
-        m_col2.write("**Test Loss:** 0.18")
+        m_col2.write("**F1-Score:** 0.93")
+        m_col2.write("**F1-Score:** 0.93")
+
+        m_col1.write("**Total params:** 5,499,380")
+        m_col1.write("**Trainable params:** 1,833,126")
+        m_col2.write("**Optimizer params:** 3,666,254 ")
+        m_col2.write("**Non-trainable params:** 0")
 
     # Bottom Row: Visuals (Confusion Matrix and Curves)
     st.write("#### Performance Visualizations")
@@ -445,19 +461,27 @@ elif page == "About Models":
     with col3:
         st.subheader("Model Architecture")
         st.code("""
-        - Base: MobileNetV2 (ImageNet)
-        - Layer: GlobalAveragePooling2D
-        - Layer: Dropout (0.2)
-        - Output: Dense (38 units, Softmax)
+        base_model = MobileNetV2(weights='imagenet', include_top=False, input_shape=(224, 224, 3))
+        for layer in base_model.layers:
+            layer.trainable = False
+        x = base_model.output
+        x = GlobalAveragePooling2D()(x)
+        x = Dense(512, activation='relu')(x)
+        x = Dropout(0.5)(x)
+        predictions = Dense(38, activation='softmax')(x)
+        model = Model(inputs=base_model.input, outputs=predictions)
         """)
     with col4:
         st.subheader("Final Test Metrics")
-        st.metric("Test Accuracy", "97.85%", delta="Best Performer")
+        st.metric("Test Accuracy", "95.05", delta="Best Performer")
         m_col3, m_col4 = st.columns(2)
-        m_col3.write("**Precision:** 0.98")
-        m_col3.write("**Recall:** 0.97")
-        m_col4.write("**F1-Score:** 0.98")
-        m_col4.write("**Test Loss:** 0.09")
+        m_col3.write("**Precision:** 0.95")
+        m_col3.write("**Recall:** 0.95")
+        m_col4.write("**F1-Score:** 0.95")
+        m_col4.write("**Test Loss:** 0.1530")
+        m_col3.write("**Trainable params: 675,366**")
+        m_col4.write("**Non-trainable params: 2,257,984**")
+        m_col3.write("**Total params: 2,933,350**")
 
     st.write("#### Performance Visualizations")
     v_col3, v_col4 = st.columns(2)
@@ -475,20 +499,28 @@ elif page == "About Models":
     with col5:
         st.subheader("Model Architecture")
         st.code("""
-        - Input: Flatten (64x64x3)
-        - Dense (1024) + ReLU
-        - Dropout (0.4)
-        - Dense (512) + ReLU
-        - Output: Dense (38 units, Softmax)
+        ann_model = Sequential([
+        Flatten(input_shape=(64, 64, 3)), 
+        Dense(1024, activation='relu'),  
+        Dropout(0.4),
+        Dense(512, activation='relu'),    
+        Dropout(0.3),
+        Dense(256, activation='relu'),    
+        Dropout(0.3),
+        Dense(38, activation='softmax')   
+        ])
         """)
     with col6:
         st.subheader("Final Test Metrics")
-        st.metric("Test Accuracy", "82.40%")
+        st.metric("Test Accuracy", "18.01% ")
         m_col5, m_col6 = st.columns(2)
         m_col5.write("**Precision:** 0.81")
-        m_col5.write("**Recall:** 0.80")
+        m_col5.write("**Recall:** 0.18")
         m_col6.write("**F1-Score:** 0.80")
-        m_col6.write("**Test Loss:** 0.65")
+        m_col6.write("**Test Loss:** 2.9364")
+        m_col5.write("**Total params:** 13,249")
+        m_col6.write("**Trainable params:** 13,249,830")
+        m_col5.write("**Non-trainable params:** 0 ")
 
     st.write("#### Performance Visualizations")
     v_col5, v_col6 = st.columns(2)
